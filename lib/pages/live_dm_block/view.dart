@@ -47,12 +47,10 @@ class _LiveDmBlockPageState extends State<LiveDmBlockPage> {
       controller: _controller.tabController,
       children: [
         KeepAliveWrapper(
-          builder: (context) =>
-              Obx(() => _buildKeyword(_controller.keywordList)),
+          child: Obx(() => _buildKeyword(_controller.keywordList)),
         ),
         KeepAliveWrapper(
-          builder: (context) =>
-              Obx(() => _buildKeyword(_controller.shieldUserList)),
+          child: Obx(() => _buildKeyword(_controller.shieldUserList)),
         ),
       ],
     );
@@ -159,7 +157,7 @@ class _LiveDmBlockPageState extends State<LiveDmBlockPage> {
 
   Widget _buildKeyword(List list) {
     if (list.isEmpty) {
-      return scrollErrorWidget();
+      return scrollableError;
     }
     return SingleChildScrollView(
       padding: EdgeInsets.only(

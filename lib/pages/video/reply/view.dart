@@ -86,6 +86,10 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                   padding: const .fromLTRB(12, 2.5, 6, 2.5),
                   child: Obx(() {
                     final sortType = _videoReplyController.sortType.value;
+                    final showOnlyUp = _videoReplyController.showOnlyUp.value;
+                    final onlyUpColor = showOnlyUp
+                        ? colorScheme.primary
+                        : colorScheme.secondary;
                     return Row(
                       mainAxisAlignment: .spaceBetween,
                       children: [
@@ -93,21 +97,61 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                           sortType.desc,
                           style: const TextStyle(fontSize: 13),
                         ),
-                        TextButton.icon(
-                          style: Style.buttonStyle,
-                          onPressed: _videoReplyController.queryBySort,
-                          icon: Icon(
-                            Icons.sort,
-                            size: 16,
-                            color: colorScheme.secondary,
-                          ),
-                          label: Text(
-                            sortType.descShort,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: colorScheme.secondary,
+                        Row(
+                          children: [
+                            // 刷新按钮
+                            TextButton.icon(
+                              style: Style.buttonStyle,
+                              onPressed: _videoReplyController.onRefresh,
+                              icon: Icon(
+                                Icons.refresh,
+                                size: 16,
+                                color: colorScheme.secondary,
+                              ),
+                              label: Text(
+                                '刷新',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: colorScheme.secondary,
+                                ),
+                              ),
                             ),
-                          ),
+                            // 只看UP主按钮
+                            TextButton.icon(
+                              style: Style.buttonStyle,
+                              onPressed: _videoReplyController.toggleShowOnlyUp,
+                              icon: Icon(
+                                showOnlyUp
+                                    ? Icons.person
+                                    : Icons.person_outline,
+                                size: 16,
+                                color: onlyUpColor,
+                              ),
+                              label: Text(
+                                '只看UP主',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: onlyUpColor,
+                                ),
+                              ),
+                            ),
+                            TextButton.icon(
+                              style: Style.buttonStyle,
+                              onPressed: _videoReplyController.queryBySort,
+                              icon: Icon(
+                                Icons.sort,
+                                size: 16,
+                                color: colorScheme.secondary,
+                              ),
+                              label: Text(
+                                sortType.descShort,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: colorScheme.secondary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     );
@@ -157,7 +201,9 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
         );
       case Success(:final response):
         if (response != null && response.isNotEmpty) {
-          var count = response.length + 1;
+          final (list: filteredResponse, indices: originalIndices) =
+              _videoReplyController.filterReplies(response);
+          var count = filteredResponse.length + 1;
           final voteCard = _videoReplyController.voteCard;
           final hasVote = voteCard != null;
           if (hasVote) {
@@ -172,7 +218,23 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                   index--;
                 }
               }
-              if (index == response.length) {
+              if (index == filteredResponse.length) {
+                // 只看UP主时不加载更多（服务端不支持筛选）
+                if (originalIndices != null) {
+                  return Container(
+                    height: 125,
+                    alignment: .center,
+                    margin: .only(bottom: bottom),
+                    child: Text(
+                      '没有更多了',
+                      textAlign: .center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.outline,
+                      ),
+                    ),
+                  );
+                }
                 _videoReplyController.onLoadMore();
                 return Container(
                   height: 125,
@@ -185,20 +247,24 @@ class _VideoReplyPanelState extends State<VideoReplyPanel>
                   ),
                 );
               } else {
-                final item = response[index];
+                final originalIndex = originalIndices?[index] ?? index;
+                final item = filteredResponse[index];
                 final child = ReplyItemGrpc(
                   replyItem: item,
                   replyLevel: widget.replyLevel,
                   replyReply: _videoReplyController.replyReply,
                   onReply: _videoReplyController.onReply,
-                  onDelete: (item, subIndex) =>
-                      _videoReplyController.onRemove(index, item, subIndex),
+                  onDelete: (item, subIndex) => _videoReplyController.onRemove(
+                    originalIndex,
+                    item,
+                    subIndex,
+                  ),
                   upMid: _videoReplyController.upMid,
                   getTag: () => heroTag,
                   onCheckReply: _videoReplyController.onCheckReply,
                   onToggleTop: (item) => _videoReplyController.onToggleTop(
                     item,
-                    index,
+                    originalIndex,
                     _videoReplyController.aid,
                     _videoReplyController.videoType.replyType,
                   ),

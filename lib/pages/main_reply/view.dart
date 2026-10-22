@@ -118,43 +118,7 @@ class _MainReplyPageState extends State<MainReplyPage>
       ),
       Success(:final response) =>
         response != null && response.isNotEmpty
-            ? SliverList.builder(
-                itemCount: response.length + 1,
-                itemBuilder: (context, index) {
-                  if (index == response.length) {
-                    _controller.onLoadMore();
-                    return Container(
-                      alignment: Alignment.center,
-                      margin: EdgeInsets.only(bottom: padding.bottom),
-                      height: 125,
-                      child: Text(
-                        _controller.isEnd ? '没有更多了' : '加载中...',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.outline,
-                        ),
-                      ),
-                    );
-                  } else {
-                    return ReplyItemGrpc(
-                      replyItem: response[index],
-                      replyLevel: 1,
-                      replyReply: throttleReplyReply,
-                      onReply: _controller.onReply,
-                      onDelete: (item, subIndex) =>
-                          _controller.onRemove(index, item, subIndex),
-                      upMid: _controller.upMid,
-                      onCheckReply: _controller.onCheckReply,
-                      onToggleTop: (item) => _controller.onToggleTop(
-                        item,
-                        index,
-                        _controller.oid,
-                        _controller.replyType,
-                      ),
-                    );
-                  }
-                },
-              )
+            ? _buildReplyList(response)
             : HttpError(
                 errMsg: '还没有评论',
                 onReload: _controller.onReload,
@@ -164,6 +128,67 @@ class _MainReplyPageState extends State<MainReplyPage>
         onReload: _controller.onReload,
       ),
     };
+  }
+
+  Widget _buildReplyList(List<ReplyInfo> response) {
+    final (list: filteredResponse, indices: originalIndices) = _controller
+        .filterReplies(response);
+    return SliverList.builder(
+      itemCount: filteredResponse.length + 1,
+      itemBuilder: (context, index) {
+        if (index == filteredResponse.length) {
+          // 只看UP主时不加载更多（服务端不支持筛选）
+          if (originalIndices != null) {
+            return Container(
+              alignment: Alignment.center,
+              margin: EdgeInsets.only(bottom: padding.bottom),
+              height: 125,
+              child: Text(
+                '没有更多了',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.outline,
+                ),
+              ),
+            );
+          }
+          _controller.onLoadMore();
+          return Container(
+            alignment: Alignment.center,
+            margin: EdgeInsets.only(bottom: padding.bottom),
+            height: 125,
+            child: Text(
+              _controller.isEnd ? '没有更多了' : '加载中...',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.outline,
+              ),
+            ),
+          );
+        } else {
+          final originalIndex = originalIndices?[index] ?? index;
+          return ReplyItemGrpc(
+            replyItem: filteredResponse[index],
+            replyLevel: 1,
+            replyReply: throttleReplyReply,
+            onReply: _controller.onReply,
+            onDelete: (item, subIndex) => _controller.onRemove(
+              originalIndex,
+              item,
+              subIndex,
+            ),
+            upMid: _controller.upMid,
+            onCheckReply: _controller.onCheckReply,
+            onToggleTop: (item) => _controller.onToggleTop(
+              item,
+              originalIndex,
+              _controller.oid,
+              _controller.replyType,
+            ),
+          );
+        }
+      },
+    );
   }
 
   Widget buildReplyHeader() {
@@ -183,16 +208,50 @@ class _MainReplyPageState extends State<MainReplyPage>
                 );
               },
             ),
-            TextButton.icon(
-              style: Style.buttonStyle,
-              onPressed: _controller.queryBySort,
-              icon: Icon(Icons.sort, size: 16, color: secondary),
-              label: Obx(
-                () => Text(
-                  _controller.sortType.value.descShort,
-                  style: TextStyle(fontSize: 13, color: secondary),
+            Row(
+              children: [
+                // 刷新按钮
+                TextButton.icon(
+                  style: Style.buttonStyle,
+                  onPressed: _controller.onRefresh,
+                  icon: Icon(Icons.refresh, size: 16, color: secondary),
+                  label: Text(
+                    '刷新',
+                    style: TextStyle(fontSize: 13, color: secondary),
+                  ),
                 ),
-              ),
+                // 只看UP主按钮
+                Obx(
+                  () {
+                    final showOnlyUp = _controller.showOnlyUp.value;
+                    final color = showOnlyUp ? colorScheme.primary : secondary;
+                    return TextButton.icon(
+                      style: Style.buttonStyle,
+                      onPressed: _controller.toggleShowOnlyUp,
+                      icon: Icon(
+                        showOnlyUp ? Icons.person : Icons.person_outline,
+                        size: 16,
+                        color: color,
+                      ),
+                      label: Text(
+                        '只看UP主',
+                        style: TextStyle(fontSize: 13, color: color),
+                      ),
+                    );
+                  },
+                ),
+                TextButton.icon(
+                  style: Style.buttonStyle,
+                  onPressed: _controller.queryBySort,
+                  icon: Icon(Icons.sort, size: 16, color: secondary),
+                  label: Obx(
+                    () => Text(
+                      _controller.sortType.value.descShort,
+                      style: TextStyle(fontSize: 13, color: secondary),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

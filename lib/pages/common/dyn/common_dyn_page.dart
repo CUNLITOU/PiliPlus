@@ -30,7 +30,8 @@ import 'package:material_ui/material_ui.dart';
 enum DynType implements EnumWithLabel {
   repost('转发'),
   reply('评论'),
-  like('赞');
+  like('赞')
+  ;
 
   @override
   final String label;
@@ -153,16 +154,52 @@ mixin CommonDynPageMixin<T extends StatefulWidget>
                 );
               },
             ),
-            TextButton.icon(
-              style: Style.buttonStyle,
-              onPressed: controller.queryBySort,
-              icon: Icon(Icons.sort, size: 16, color: secondary),
-              label: Obx(
-                () => Text(
-                  controller.sortType.value.descShort,
-                  style: TextStyle(fontSize: 13, color: secondary),
+            Row(
+              children: [
+                // 刷新按钮
+                TextButton.icon(
+                  style: Style.buttonStyle,
+                  onPressed: controller.onRefresh,
+                  icon: Icon(Icons.refresh, size: 16, color: secondary),
+                  label: Text(
+                    '刷新',
+                    style: TextStyle(fontSize: 13, color: secondary),
+                  ),
                 ),
-              ),
+                // 只看UP主按钮
+                Obx(
+                  () {
+                    final showOnlyUp = controller.showOnlyUp.value;
+                    final color = showOnlyUp
+                        ? theme.colorScheme.primary
+                        : secondary;
+                    return TextButton.icon(
+                      style: Style.buttonStyle,
+                      onPressed: controller.toggleShowOnlyUp,
+                      icon: Icon(
+                        showOnlyUp ? Icons.person : Icons.person_outline,
+                        size: 16,
+                        color: color,
+                      ),
+                      label: Text(
+                        '只看UP主',
+                        style: TextStyle(fontSize: 13, color: color),
+                      ),
+                    );
+                  },
+                ),
+                TextButton.icon(
+                  style: Style.buttonStyle,
+                  onPressed: controller.queryBySort,
+                  icon: Icon(Icons.sort, size: 16, color: secondary),
+                  label: Obx(
+                    () => Text(
+                      controller.sortType.value.descShort,
+                      style: TextStyle(fontSize: 13, color: secondary),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -182,7 +219,9 @@ mixin CommonDynPageMixin<T extends StatefulWidget>
         );
       case Success(:final response):
         if (response != null && response.isNotEmpty) {
-          var count = response.length + 1;
+          final (list: filteredResponse, indices: originalIndices) = controller
+              .filterReplies(response);
+          var count = filteredResponse.length + 1;
           final voteCard = controller.voteCard;
           final hasVote = voteCard != null;
           if (hasVote) {
@@ -199,7 +238,22 @@ mixin CommonDynPageMixin<T extends StatefulWidget>
                   index--;
                 }
               }
-              if (index == response.length) {
+              if (index == filteredResponse.length) {
+                // 只看UP主时不加载更多（服务端不支持筛选）
+                if (originalIndices != null) {
+                  return Container(
+                    alignment: Alignment.center,
+                    margin: EdgeInsets.only(bottom: padding.bottom),
+                    height: 125,
+                    child: Text(
+                      '没有更多了',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                  );
+                }
                 controller.onLoadMore();
                 return Container(
                   alignment: Alignment.center,
@@ -214,7 +268,11 @@ mixin CommonDynPageMixin<T extends StatefulWidget>
                   ),
                 );
               } else {
-                return buildReply(context, index, response[index]);
+                return buildReply(
+                  context,
+                  originalIndices?[index] ?? index,
+                  filteredResponse[index],
+                );
               }
             },
           );

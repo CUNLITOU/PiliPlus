@@ -104,7 +104,10 @@ abstract class ReplyController<R> extends CommonListController<R, ReplyInfo> {
   late final RxInt count;
 
   late final Rx<ReplySortType> sortType;
-  late Mode mode;
+  late final Rx<Mode> mode;
+
+  // 只看UP主筛选
+  final RxBool showOnlyUp = false.obs;
 
   final savedReplies = <Object, List<RichTextItem>?>{};
 
@@ -131,7 +134,8 @@ abstract class ReplyController<R> extends CommonListController<R, ReplyInfo> {
     super.onInit();
     final cacheSortType = prefSortType;
     sortType = cacheSortType.obs;
-    mode = cacheSortType == .time ? Mode.MAIN_LIST_TIME : Mode.MAIN_LIST_HOT;
+    mode =
+        (cacheSortType == .time ? Mode.MAIN_LIST_TIME : Mode.MAIN_LIST_HOT).obs;
   }
 
   @override
@@ -179,11 +183,62 @@ abstract class ReplyController<R> extends CommonListController<R, ReplyInfo> {
   }
 
   @override
-  Future<void> onRefresh() {
+  Future<void> onRefresh() async {
     cursorNext = null;
     subjectControl = null;
     paginationReply = null;
-    return super.onRefresh();
+    await super.onRefresh();
+    // 如果开启了只看UP主，刷新后需要重新加载所有评论
+    await _loadAllForOnlyUp();
+  }
+
+  // 加载所有评论（服务端不支持按UP主筛选，只能拉取后在本地过滤）
+  Future<void> _loadAllForOnlyUp() async {
+    if (!showOnlyUp.value || isEnd) return;
+    SmartDialog.showLoading(msg: '正在加载评论以筛选UP主...');
+    try {
+      // 限制拉取页数，避免热门视频无限翻页造成长时间无响应
+      for (var i = 0; i < 20; i++) {
+        if (isEnd || isLoading || !showOnlyUp.value) break;
+        final cursor = cursorNext;
+        await onLoadMore();
+        // 请求失败或没有新数据时停止，避免死循环
+        if (!isEnd && cursorNext == cursor) break;
+      }
+    } finally {
+      SmartDialog.dismiss();
+    }
+  }
+
+  // 切换只看UP主
+  Future<void> toggleShowOnlyUp() async {
+    feedBack();
+    showOnlyUp.value = !showOnlyUp.value;
+    if (showOnlyUp.value) {
+      await _loadAllForOnlyUp();
+    }
+    loadingState.refresh();
+  }
+
+  /// 根据只看UP主状态过滤评论，同时返回其在原始列表中的索引
+  ({List<ReplyInfo> list, List<int>? indices}) filterReplies(
+    List<ReplyInfo> response,
+  ) {
+    final upMid = this.upMid;
+    if (!showOnlyUp.value || upMid == null) {
+      return (list: response, indices: null);
+    }
+    final list = <ReplyInfo>[];
+    final indices = <int>[];
+    for (var i = 0; i < response.length; i++) {
+      final item = response[i];
+      // UP主自己的评论，或UP主参与回复的评论
+      if (item.mid == upMid || item.replies.any((e) => e.mid == upMid)) {
+        list.add(item);
+        indices.add(i);
+      }
+    }
+    return (list: list, indices: indices);
   }
 
   // 排序搜索评论
@@ -192,11 +247,11 @@ abstract class ReplyController<R> extends CommonListController<R, ReplyInfo> {
     switch (sortType.value) {
       case ReplySortType.time:
         sortType.value = ReplySortType.hot;
-        mode = Mode.MAIN_LIST_HOT;
+        mode.value = Mode.MAIN_LIST_HOT;
         break;
       case ReplySortType.hot:
         sortType.value = ReplySortType.time;
-        mode = Mode.MAIN_LIST_TIME;
+        mode.value = Mode.MAIN_LIST_TIME;
         break;
       case ReplySortType.select:
         return;

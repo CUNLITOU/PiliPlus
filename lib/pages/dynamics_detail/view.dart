@@ -644,18 +644,50 @@ class _DynamicDetailPageState extends CommonDynPageMultiState<DynamicDetailPage>
       child: Obx(
         () {
           final sortType = controller.sortType.value;
+          final showOnlyUp = controller.showOnlyUp.value;
+          final onlyUpColor = showOnlyUp
+              ? theme.colorScheme.primary
+              : secondary;
           return Row(
             mainAxisAlignment: .spaceBetween,
             children: [
               Text(sortType.desc),
-              TextButton.icon(
-                style: Style.buttonStyle,
-                onPressed: controller.queryBySort,
-                icon: Icon(Icons.sort, size: 16, color: secondary),
-                label: Text(
-                  sortType.descShort,
-                  style: TextStyle(fontSize: 13, color: secondary),
-                ),
+              Row(
+                children: [
+                  // 刷新按钮
+                  TextButton.icon(
+                    style: Style.buttonStyle,
+                    onPressed: controller.onRefresh,
+                    icon: Icon(Icons.refresh, size: 16, color: secondary),
+                    label: Text(
+                      '刷新',
+                      style: TextStyle(fontSize: 13, color: secondary),
+                    ),
+                  ),
+                  // 只看UP主按钮
+                  TextButton.icon(
+                    style: Style.buttonStyle,
+                    onPressed: controller.toggleShowOnlyUp,
+                    icon: Icon(
+                      showOnlyUp ? Icons.person : Icons.person_outline,
+                      size: 16,
+                      color: onlyUpColor,
+                    ),
+                    label: Text(
+                      '只看UP主',
+                      style: TextStyle(fontSize: 13, color: onlyUpColor),
+                    ),
+                  ),
+                  TextButton.icon(
+                    style: Style.buttonStyle,
+                    onPressed: controller.queryBySort,
+                    icon: Icon(Icons.sort, size: 16, color: secondary),
+                    label: Text(
+                      sortType.descShort,
+                      style: TextStyle(fontSize: 13, color: secondary),
+                    ),
+                  ),
+                ],
               ),
             ],
           );

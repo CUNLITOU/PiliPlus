@@ -84,7 +84,7 @@ class VideoReplyController extends ReplyController<MainListReply>
     oid: isPugv ? videoCtr.epId! : aid,
     rpid: rootRpId,
     type: videoType.replyType,
-    mode: mode,
+    mode: mode.value,
     cursorNext: cursorNext,
     offset: paginationReply?.nextOffset,
   );

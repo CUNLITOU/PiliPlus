@@ -116,11 +116,23 @@ class _PlDanmakuState extends State<PlDanmaku> {
     if (currentDanmakuList != null) {
       final blockColorful = DanmakuOptions.blockColorful;
       final danmakuWeight = DanmakuOptions.danmakuWeight;
+      final option = _controller!.option;
       for (DanmakuElem e in currentDanmakuList) {
         if (e.weight < danmakuWeight) continue;
+        // 预判该弹幕是否会被隐藏，避免无谓的对象构造与后续绘制开销
+        final type = DmUtils.getPosition(e.mode);
+        if (type == DanmakuItemType.scroll) {
+          if (option.hideScroll) continue;
+        } else if (type == DanmakuItemType.top) {
+          if (option.hideTop) continue;
+        } else if (type == DanmakuItemType.bottom) {
+          if (option.hideBottom) continue;
+        } else if (option.hideSpecial) {
+          continue;
+        }
         if (e.mode == 7) {
           try {
-            _controller!.addDanmaku(
+            _pendingDanmaku.add(
               SpecialDanmakuContentItem.fromList(
                 DmUtils.decimalToColor(e.color),
                 e.fontsize.toDouble(),
@@ -134,13 +146,15 @@ class _PlDanmakuState extends State<PlDanmaku> {
             );
           } catch (_) {}
         } else {
-          _controller!.addDanmaku(
+          final content = e.content.trim();
+          if (content.isEmpty) continue;
+          _pendingDanmaku.add(
             DanmakuContentItem(
-              e.content,
+              content,
               color: blockColorful
                   ? Colors.white
                   : DmUtils.decimalToColor(e.color),
-              type: DmUtils.getPosition(e.mode),
+              type: type,
               isColorful:
                   playerController.showVipDanmaku &&
                   e.colorful == DmColorfulType.VipGradualColor,
@@ -156,10 +170,42 @@ class _PlDanmakuState extends State<PlDanmaku> {
         }
       }
     }
+    _flushPendingDanmaku();
+  }
+
+  /// 单次最多添加入渲染队列的弹幕数量，避免拖进度/切P时大量弹幕
+  /// 集中在同一帧处理导致界面卡死
+  static const int _maxAddPerTick = 20;
+
+  /// 待添加的弹幕，超出单次上限的部分顺延到后续帧
+  final List<DanmakuContentItem<DanmakuExtra>> _pendingDanmaku = [];
+  static const int _maxPending = 400;
+
+  void _flushPendingDanmaku() {
+    final controller = _controller;
+    if (controller == null || _pendingDanmaku.isEmpty) {
+      return;
+    }
+    final end = _pendingDanmaku.length < _maxAddPerTick
+        ? _pendingDanmaku.length
+        : _maxAddPerTick;
+    for (var i = 0; i < end; i++) {
+      controller.addDanmaku(_pendingDanmaku[i]);
+    }
+    if (end == _pendingDanmaku.length) {
+      _pendingDanmaku.clear();
+    } else {
+      _pendingDanmaku.removeRange(0, end);
+      // 极端情况下限制积压，防止内存与延迟持续增长
+      if (_pendingDanmaku.length > _maxPending) {
+        _pendingDanmaku.removeRange(0, _pendingDanmaku.length - _maxPending);
+      }
+    }
   }
 
   @override
   void dispose() {
+    _pendingDanmaku.clear();
     playerController
       ..removePositionListener(videoPositionListen)
       ..removeStatusLister(playerListener);

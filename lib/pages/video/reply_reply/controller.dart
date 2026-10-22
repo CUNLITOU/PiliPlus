@@ -129,7 +129,7 @@ class VideoReplyReplyController extends ReplyController
           oid: oid,
           root: rpid,
           rpid: id ?? 0,
-          mode: mode,
+          mode: mode.value,
           offset: paginationReply?.nextOffset,
         );
 

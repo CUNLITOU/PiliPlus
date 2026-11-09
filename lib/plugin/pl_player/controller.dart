@@ -157,6 +157,12 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   Timer? _timer;
   StreamSubscription? _subForSeek;
 
+  /// EDL 音频流偶发打开失败时，mpv 会跳过音轨继续播放无声视频，
+  /// 检测到音轨缺失后延迟自动重新加载
+  Timer? _audioMissingTimer;
+  int _audioMissingRetry = 0;
+  static const int _kMaxAudioMissingRetry = 2;
+
   Box setting = GStorage.setting;
 
   // final Durations durations;
@@ -891,6 +897,8 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     Volume? volume,
   ) async {
     isBuffering.value = false;
+    _audioMissingTimer?.cancel();
+    _audioMissingRetry = 0;
     _heartDuration = 0;
     danmakuController?.clear();
 
@@ -1097,6 +1105,32 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           _stopWakeLockTimer();
           _updatePlaybackState();
         }
+      }),
+      // 音轨缺失检测：音频流偶发打开失败时，mpv 会跳过音轨继续播放无声视频，
+      // 现有错误重试依赖缓冲状态覆盖不到该场景，检测到后主动重新加载
+      stream.tracks.listen((Tracks tracks) {
+        if (tracks.audio.isNotEmpty) {
+          _audioMissingTimer?.cancel();
+          return;
+        }
+        if (isLive ||
+            dataSource is FileSource ||
+            _audioMissingRetry >= _kMaxAudioMissingRetry ||
+            dataSource.audioSource?.isNotEmpty != true) {
+          return;
+        }
+        _audioMissingTimer?.cancel();
+        _audioMissingTimer = Timer(const Duration(milliseconds: 1500), () {
+          if (_playerCount == 0 ||
+              !playerStatus.isPlaying ||
+              player.state.tracks.audio.isNotEmpty ||
+              dataSource.audioSource?.isNotEmpty != true) {
+            return;
+          }
+          _audioMissingRetry++;
+          SmartDialog.showToast('音频加载失败，正在重试');
+          refreshPlayer();
+        });
       }),
       if (kDebugMode)
         stream.log.listen(((PlayerLog log) {
@@ -1677,6 +1711,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       IOSPipHelper.dispose();
     }
     _timer?.cancel();
+    _audioMissingTimer?.cancel();
     // _position.close();
     // _playerEventSubs?.cancel();
     // _sliderPosition.close();
